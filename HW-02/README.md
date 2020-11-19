@@ -44,15 +44,14 @@ test=# create table test(c1 text);
 CREATE TABLE
 test=# insert into test values('1');
 INSERT 0 1
-test=# \q
 ```
 
 * остановите postgres например через sudo -u postgres pg_ctlcluster 13 main stop
 ```
+rsa-key-20201109@instance-1:~$ sudo -u postgres pg_ctlcluster 12 main stop
 rsa-key-20201109@instance-1:~$ sudo -u postgres pg_lsclusters
 Ver Cluster Port Status Owner    Data directory              Log file
 12  main    5432 down   postgres /var/lib/postgresql/12/main /var/log/postgresql/postgresql-12-main.log
-rsa-key-20201109@instance-1:~$
 ```
 
 * создайте новый standard persistent диск GKE через Compute Engine -> Disks в том же регионе и зоне что GCE инстанс размером например 10GB
@@ -71,6 +70,7 @@ Filesystem      Size  Used Avail Use% Mounted on
 
 * сделайте пользователя postgres владельцем /mnt/data - chown -R postgres:postgres /mnt/data/
 ```
+rsa-key-20201109@instance-1:~$ sudo chown -R postgres:postgres /mnt/data/
 rsa-key-20201109@instance-1:~$ ll /mnt/
 total 12
 drwxr-xr-x  3 root     root     4096 Nov 18 17:00 ./
@@ -80,6 +80,7 @@ drwxr-xr-x  3 postgres postgres 4096 Nov 18 16:59 data/
 
 * перенесите содержимое /var/lib/postgres/13 в /mnt/data - mv /var/lib/postgresql/13 /mnt/data
 ```
+rsa-key-20201109@instance-1:~$ sudo mv /var/lib/postgresql/13 /mnt/data
 rsa-key-20201109@instance-1:~$ sudo ls -la /mnt/data
 total 28
 drwxr-xr-x  4 postgres postgres  4096 Nov 18 17:10 .
@@ -105,15 +106,18 @@ Error: /var/lib/postgresql/12/main is not accessible or does not exist
 
 * напишите что и почему поменяли
 ```
+Поменяли путь к каталогу данных
+
 less /etc/postgresql/12/main/postgresql.conf
 
 #data_directory = '/var/lib/postgresql/12/main'         # use data in another directory
-data_directory = '/mnt/data/12/main'          # use data in another directory
+data_directory = '/mnt/data/12/main'         
 ```
 
 * попытайтесь запустить кластер - sudo -u postgres pg_ctlcluster 13 main start
 * напишите получилось или нет и почему
 ```
+rsa-key-20201109@instance-1:~$ sudo -u postgres pg_ctlcluster 12 main start
 rsa-key-20201109@instance-1:~$ sudo -u postgres pg_lsclusters
 Ver Cluster Port Status Owner    Data directory    Log file
 12  main    5432 online postgres /mnt/data/12/main /var/log/postgresql/postgresql-12-main.log
@@ -198,7 +202,7 @@ Password for user postgres:
 psql (13.1 (Debian 13.1-1.pgdg100+1))
 Type "help" for help.
 
-postgres=# create database test;
+postgres=# 
 ```
 
 * подключится из контейнера с клиентом к контейнеру с сервером и сделать
@@ -224,6 +228,11 @@ test=# select * from test;
 ```
 
 * подключится к контейнеру с сервером с ноутбука/компьютера извне инстансов GCP
+```
+Для этого необходимо разрешить доступ в pg_hba.conf:
+host     all     all      0.0.0.0/0     md5
+```
+
 * удалить контейнер с сервером
 ```
 CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS                    NAMES
@@ -234,7 +243,6 @@ rsa-key-20201109@instance-1:~$ sudo docker rm eeb5e87806fc
 eeb5e87806fc
 rsa-key-20201109@instance-1:~$ sudo docker ps -a
 CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
-rsa-key-20201109@instance-1:~$
 ```
 * создать его заново
 ```
@@ -242,10 +250,6 @@ rsa-key-20201109@instance-1:~$
 ```
 
 * подключится снова из контейнера с клиентом к контейнеру с сервером
-```
-Для этого необходимо разрешить доступ в pg_hba.conf:
-host     all     all      0.0.0.0/0     md5
-```
 
 ```
 rsa-key-20201109@instance-1:~$ sudo docker run -it --rm --network pg-net --name pg-client postgres:13 psql -h pg-docker -U postgres
