@@ -36,6 +36,12 @@ COMMIT
 
 ## 2. Смоделируйте ситуацию обновления одной и той же строки тремя командами UPDATE в разных сеансах. Изучите возникшие блокировки в представлении pg_locks и убедитесь, что все они понятны. Пришлите список блокировок и объясните, что значит каждая.
 
+* pid 4440 = первая транзакция (update t1 set i1=0 where i1=1). У нее установлен реальный идентификатор транзакции transactionid (флаг намерения изменить данные). Блокировка RowExclusiveLock - блокировка конкретной строки. 
+
+* pid 4458 = вторая транзакция (update t1 set i1=1 where i1=1). Аналогично RowExclusiveLock и transactionid. Дополнительно ShareLock на идентификаторе блокирующей транзакции. Выставлен tuple - признак того, что эта транзакция "первая в очереди".
+
+* pid 4686 = третья транзакция (update t1 set i1=2 where i1=1). Аналогично RowExclusiveLock и transactionid. Блокировка на tuple 2005558-ой транзакции.
+
 ```
 postgres=# select  locktype, relation::regclass, page , tuple , virtualxid as vxid , transactionid as tr,   virtualtransaction as vtr, pid  ,       mode       , granted as g, fastpath as fp from pg_locks order by pid;
    locktype    | relation | page | tuple | vxid |   tr    | vtr  | pid  |       mode       | g | fp
@@ -60,24 +66,14 @@ postgres=# select  locktype, relation::regclass, page , tuple , virtualxid as vx
 (14 rows)
 
 ```
-
-* pid 4440 = первая транзакция (set i1=0). У нее установлен реальный идентификатор транзакции transactionid (флаг намерения изменить данные). Блокировка RowExclusiveLock - блокировка конкретной строки. 
-
-* pid 4458 = вторая транзакция (set i1=1). Аналогично RowExclusiveLock и transactionid. Дополнительно ShareLock на идентификаторе блокирующей транзакции. Выставлен tuple - признак того, что эта транзакция "первая в очереди".
-
-* pid 4686 = третья транзакция (set i1=2). Аналогично RowExclusiveLock и transactionid. Блокировка на tuple 2005558-ой транзакции.
-
-Эту же информацию можно получить и так: 
+Дополнительную разъясняющую информацию можно получить так: 
 ```
 select query, state, waiting, pid from pg_stat_activity where datname = 'postgres' and not (state = 'idle' or pid = pg_backend_pid());
 -[ RECORD 1 ]----+--------------------------------
 datid            | 13414
 datname          | postgres
 pid              | 4440
-leader_pid       |
-usesysid         | 10
 usename          | postgres
-backend_start    | 2020-12-06 14:27:40.115809+00
 xact_start       | 2020-12-06 14:37:26.320055+00
 query_start      | 2020-12-06 14:37:48.976511+00
 state_change     | 2020-12-06 14:37:48.976744+00
@@ -87,14 +83,10 @@ state            | idle in transaction
 backend_xid      | 2005557
 backend_xmin     |
 query            | update t1 set i1=0 where i1=11;
-backend_type     | client backend
 -[ RECORD 2 ]----+--------------------------------
 datid            | 13414
 datname          | postgres
 pid              | 4458
-leader_pid       |
-usesysid         | 10
-backend_start    | 2020-12-06 14:28:33.562334+00
 xact_start       | 2020-12-06 14:37:31.670821+00
 query_start      | 2020-12-06 14:38:07.931761+00
 state_change     | 2020-12-06 14:38:07.931764+00
@@ -104,12 +96,10 @@ state            | active
 backend_xid      | 2005558
 backend_xmin     | 2005557
 query            | update t1 set i1=1 where i1=11;
-backend_type     | client backend
 -[ RECORD 3 ]----+--------------------------------
 datid            | 13414
 datname          | postgres
 pid              | 4686
-backend_start    | 2020-12-06 14:37:00.802371+00
 xact_start       | 2020-12-06 14:37:35.555083+00
 query_start      | 2020-12-06 14:38:13.572665+00
 state_change     | 2020-12-06 14:38:13.572668+00
@@ -119,7 +109,6 @@ state            | active
 backend_xid      | 2005559
 backend_xmin     | 2005557
 query            | update t1 set i1=2 where i1=11;
-backend_type     | client backend
 ```
 
 Здесь видим
@@ -131,13 +120,13 @@ backend_type     | client backend
 
 ## 3. Воспроизведите взаимоблокировку трех транзакций. Можно ли разобраться в ситуации постфактум, изучая журнал сообщений?
 
-Создае три таблицы: t1, t2, t3.
-Сессия 1 начинает транзакцию и обновляет строку №1 в t1;
-Сессия 2 начинает транзакцию и обновляет строку №1 в t2;
-Сессия 3 начинает транзакцию и обновляет строку №1 в t3;
-Сессия 1 начинает транзакцию и обновляет строку №1 в t2; (блокируется сессией 2)
-Сессия 3 начинает транзакцию и обновляет строку №1 в t1; (блокируется сессией 1)
-Сессия 2 начинает транзакцию и обновляет строку №1 в t3; (блокируется сессией 3, которая заблокирована на сессии 1, которая ожидает сессию 2).
+Создаем три таблицы: t1, t2, t3.  
+Сессия 1 начинает транзакцию и обновляет строку №1 в t1;  
+Сессия 2 начинает транзакцию и обновляет строку №1 в t2;  
+Сессия 3 начинает транзакцию и обновляет строку №1 в t3;  
+Сессия 1 начинает транзакцию и обновляет строку №1 в t2; (блокируется сессией 2)  
+Сессия 3 начинает транзакцию и обновляет строку №1 в t1; (блокируется сессией 1)  
+Сессия 2 начинает транзакцию и обновляет строку №1 в t3; (блокируется сессией 3, которая заблокирована на сессии 1, которая ожидает сессию 2).  
 ```
 postgres=*# update t3 set i3=20 where i3=1;
 ERROR:  deadlock detected
