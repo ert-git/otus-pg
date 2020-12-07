@@ -166,7 +166,7 @@ tps = 971.423584 (including connections establishing)
 tps = 971.426884 (excluding connections establishing)
 ```
 
-Таким образом, асихронный режим по fsync дает больший выигрыш, чем по synchronous_commit (хотя и не столь существенный, как для синхронного режима). Но по документации второй режим считается более безопасным, к тому же, его можно выставлять для отдельной транзакции. Или наоборот, если все большинство данных не особо важные и часть важных, то можно synchronous_commit выключить глобально и включать для важных данных.  
+Таким образом, асихронный режим по fsync дает больший выигрыш, чем по synchronous_commit (хотя и не столь существенный, как для синхронного режима). Но по документации второй режим считается более безопасным, к тому же, его можно выставлять для отдельных транзакций.  
 Выигрыш обеспечивается за счет того, что мы не ждем, пока данные действительно запишутся на диск. Т.е. отправили и побежали работать дальше.
 
 
@@ -227,6 +227,7 @@ postgres@instance-1:~$  dd if=/dev/zero of=/var/lib/postgresql/13/main/base/1341
 8+0 records out
 8 bytes copied, 0.0090488 s, 0.9 kB/s
 ```
+```
 postgres=# select * from t1;
 WARNING:  page verification failed, calculated checksum 61581 but expected 24535
 ERROR:  invalid page in block 0 of relation base/13414/16415
@@ -244,6 +245,6 @@ WARNING:  page verification failed, calculated checksum 61581 but expected 24535
 (2 rows)
 ```
 
-```
+
 Однако все зависит от того, где и что за сбой произошел. Например, если мы сломаем первый байт таблицы, то никакой ignore_checksum_failure нам не поможет. 
-```
+
